@@ -1,3 +1,11 @@
+version="1.0"
+released="13 jul 2023"
+
+#changelog
+# V1.0 - 13/07/2023
+#   first release
+#
+
 import time
 import feedparser
 import requests
@@ -26,6 +34,10 @@ ERROR_REPORT_USER_ID = os.getenv('ERROR_REPORT_USER_ID')
 # Initialize bot
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
+start_message = "Nyaa RSS bot " + version + " released on " + released + " started."
+print(start_message)
+bot.send_message(chat_id=ERROR_REPORT_USER_ID, text=start_message)
+
 # Create downloads folder if not exists
 if not os.path.exists(DOWNLOAD_PATH):
     os.makedirs(DOWNLOAD_PATH)
@@ -49,6 +61,7 @@ errors = 0
 while errors < RETRY_COUNT:
     try:
         while True:
+            print("Parsing new feeds...")
             # Parse the RSS feed
             feed = feedparser.parse(FEED_URL)
 
@@ -98,11 +111,14 @@ while errors < RETRY_COUNT:
                         file.write(f"{id}\n")
 
             # Wait before checking again
+            print("Feed parsed. Waiting " + str(CHECK_INTERVAL) + " seconds for next parsing.")
             time.sleep(CHECK_INTERVAL)
             errors = 0
     except Exception as e:
         # Send the error message to the specified user
         error_message = str(e) + "\n\n" + traceback.format_exc()
+        print("Error: " + error_message)
         bot.send_message(chat_id=ERROR_REPORT_USER_ID, text=error_message)
+        print("Waiting 60 seconds to retry. Attempt: " + str(errors))
         errors += 1
         time.sleep(60)
