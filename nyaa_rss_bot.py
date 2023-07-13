@@ -90,20 +90,30 @@ while errors < RETRY_COUNT:
                     suggested_filename = unquote(response.headers['Content-Disposition'].split('filename*=UTF-8\'\'')[-1])
                     # Add [id] and [hash] in the filename before the .torrent extension
                     file_name, file_ext = os.path.splitext(suggested_filename)
-                    file_path = os.path.join(DOWNLOAD_PATH, f"{file_name}[{id}][{entry.nyaa_infohash}]{file_ext}")
+                    file_path = os.path.join(DOWNLOAD_PATH, f"{file_name}{file_ext}")#[{id}][{entry.nyaa_infohash}]{file_ext}")
 
-                    with open(file_path, 'wb') as f:
-                        f.write(response.content)
+                    try:
+                        with open(file_path, 'wb') as f:
+                            f.write(response.content)
+                            send_file = True
+                    except Exception as e:
+                        send_file = False  
 
-                    # Send the message with the file to global channel
-                    with open(file_path, 'rb') as f:
-                        bot.send_document(chat_id=TELEGRAM_CHANNEL_ID, document=InputFile(f), caption=message, parse_mode='HTML')
-
+                    if send_file:
+                        # Send the message with the file to global channel
+                        with open(file_path, 'rb') as f:
+                            bot.send_document(chat_id=TELEGRAM_CHANNEL_ID, document=InputFile(f), caption=message, parse_mode='HTML')      
+                    else:
+                        bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message, parse_mode='HTML')      
+  
                     # Send the message with the file to each corresponding channel
                     for mapping in category_channel_mappings:
                         if mapping.category == entry.nyaa_categoryid and mapping.enabled:
                             with open(file_path, 'rb') as f:
-                                bot.send_document(chat_id=mapping.channel, document=InputFile(f), caption=message, parse_mode='HTML')
+                                if send_file:
+                                    bot.send_document(chat_id=mapping.channel, document=InputFile(f), caption=message, parse_mode='HTML')
+                                else:
+                                    bot.send_message(chat_id=mapping.channel, text=message, parse_mode='HTML')
 
                     # Mark the entry as processed
                     processed_ids.add(id)
