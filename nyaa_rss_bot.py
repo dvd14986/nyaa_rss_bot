@@ -1,9 +1,12 @@
-version="1.0"
-released="13 jul 2023"
+version="1.0.1"
+released="14 jul 2023"
 
 #changelog
 # V1.0 - 13/07/2023
 #   first release
+#
+# V1.0.1 - 14/07/2023
+#   fixed bug on caption max length
 #
 
 import time
@@ -83,6 +86,9 @@ while errors < RETRY_COUNT:
 
                     # Form the message in HTML
                     message = f"<b>{entry.title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>\n\n<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
+                    if len(message) >= 1024:
+                        message_part1 = f"<b>{entry.title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>"
+                        message_part2 = f"<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
 
                     # Download the file
                     response = requests.get(entry.link, stream=True)
@@ -102,18 +108,34 @@ while errors < RETRY_COUNT:
                     if send_file:
                         # Send the message with the file to global channel
                         with open(file_path, 'rb') as f:
-                            bot.send_document(chat_id=TELEGRAM_CHANNEL_ID, document=InputFile(f), caption=message, parse_mode='HTML')      
+                            if len(message) >= 1024:
+                                bot.send_document(chat_id=TELEGRAM_CHANNEL_ID, document=InputFile(f), caption=message_part1, parse_mode='HTML')
+                                bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part2, parse_mode='HTML')
+                            else:
+                                bot.send_document(chat_id=TELEGRAM_CHANNEL_ID, document=InputFile(f), caption=message, parse_mode='HTML')
                     else:
-                        bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message, parse_mode='HTML')      
+                        if len(message) >= 1024:
+                            bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part1, parse_mode='HTML')
+                            bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part2, parse_mode='HTML')
+                        else:
+                            bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message, parse_mode='HTML')
   
                     # Send the message with the file to each corresponding channel
                     for mapping in category_channel_mappings:
                         if mapping.category == entry.nyaa_categoryid and mapping.enabled:
                             with open(file_path, 'rb') as f:
                                 if send_file:
-                                    bot.send_document(chat_id=mapping.channel, document=InputFile(f), caption=message, parse_mode='HTML')
+                                    if len(message) >= 1024:
+                                        bot.send_document(chat_id=mapping.channel, document=InputFile(f), caption=message_part1, parse_mode='HTML')
+                                        bot.send_message(chat_id=mapping.channel, text=message_part2, parse_mode='HTML')
+                                    else:
+                                        bot.send_document(chat_id=mapping.channel, document=InputFile(f), caption=message, parse_mode='HTML')
                                 else:
-                                    bot.send_message(chat_id=mapping.channel, text=message, parse_mode='HTML')
+                                    if len(message) >= 1024:
+                                        bot.send_message(chat_id=mapping.channel, text=message_part1, parse_mode='HTML')
+                                        bot.send_message(chat_id=mapping.channel, text=message_part2, parse_mode='HTML')
+                                    else:
+                                        bot.send_message(chat_id=mapping.channel, text=message, parse_mode='HTML')
 
                     # Mark the entry as processed
                     processed_ids.add(id)
@@ -132,3 +154,5 @@ while errors < RETRY_COUNT:
         print("Waiting 60 seconds to retry. Attempt: " + str(errors))
         errors += 1
         time.sleep(60)
+
+bot.send_message(chat_id=ERROR_REPORT_USER_ID, text="Max retry attempts reached.\n\nBye Bye!")

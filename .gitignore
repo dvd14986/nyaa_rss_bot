@@ -2,3 +2,4 @@ downloads/
 pics/
 .env
 processed_ids.txt
+.env_prod
