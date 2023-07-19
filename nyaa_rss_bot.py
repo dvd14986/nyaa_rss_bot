@@ -1,5 +1,5 @@
-version="1.0.1"
-released="14 jul 2023"
+version="1.0.2"
+released="19 jul 2023"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -7,6 +7,9 @@ released="14 jul 2023"
 #
 # V1.0.1 - 14/07/2023
 #   fixed bug on caption max length
+#
+# V1.0.2 - 19/07/2023
+#   reviewed multiple send and add interval between sends to avoid flood error
 #
 
 import time
@@ -105,37 +108,33 @@ while errors < RETRY_COUNT:
                     except Exception as e:
                         send_file = False  
 
-                    if send_file:
-                        # Send the message with the file to global channel
-                        with open(file_path, 'rb') as f:
-                            if len(message) >= 1024:
-                                bot.send_document(chat_id=TELEGRAM_CHANNEL_ID, document=InputFile(f), caption=message_part1, parse_mode='HTML')
-                                bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part2, parse_mode='HTML')
-                            else:
-                                bot.send_document(chat_id=TELEGRAM_CHANNEL_ID, document=InputFile(f), caption=message, parse_mode='HTML')
-                    else:
-                        if len(message) >= 1024:
-                            bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part1, parse_mode='HTML')
-                            bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part2, parse_mode='HTML')
-                        else:
-                            bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message, parse_mode='HTML')
-  
+                    send_to = [TELEGRAM_CHANNEL_ID]
+                    
                     # Send the message with the file to each corresponding channel
                     for mapping in category_channel_mappings:
                         if mapping.category == entry.nyaa_categoryid and mapping.enabled:
-                            with open(file_path, 'rb') as f:
-                                if send_file:
-                                    if len(message) >= 1024:
-                                        bot.send_document(chat_id=mapping.channel, document=InputFile(f), caption=message_part1, parse_mode='HTML')
-                                        bot.send_message(chat_id=mapping.channel, text=message_part2, parse_mode='HTML')
-                                    else:
-                                        bot.send_document(chat_id=mapping.channel, document=InputFile(f), caption=message, parse_mode='HTML')
+                            send_to.append(mapping.channel)                  
+
+                    if send_file:
+                        # Send the message with the file to global channel
+                        with open(file_path, 'rb') as f:
+                            for destination in send_to:
+                                f.seek(0)  # Reset the file pointer to the beginning of the file
+                                if len(message) >= 1024:
+                                    bot.send_document(chat_id=destination, document=InputFile(f), caption=message_part1, parse_mode='HTML')
+                                    bot.send_message(chat_id=destination, text=message_part2, parse_mode='HTML')
                                 else:
-                                    if len(message) >= 1024:
-                                        bot.send_message(chat_id=mapping.channel, text=message_part1, parse_mode='HTML')
-                                        bot.send_message(chat_id=mapping.channel, text=message_part2, parse_mode='HTML')
-                                    else:
-                                        bot.send_message(chat_id=mapping.channel, text=message, parse_mode='HTML')
+                                    bot.send_document(chat_id=destination, document=InputFile(f), caption=message, parse_mode='HTML')
+                                time.sleep(2) #slow processing to avoid flood error
+                    else:
+                        for destination in send_to:
+                            if len(message) >= 1024:
+                                bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part1, parse_mode='HTML')
+                                bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part2, parse_mode='HTML')
+                            else:
+                                bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message, parse_mode='HTML')
+                            time.sleep(2) #slow processing to avoid flood error
+    
 
                     # Mark the entry as processed
                     processed_ids.add(id)
