@@ -1,5 +1,5 @@
-version="1.0.2"
-released="19 jul 2023"
+version="1.0.3"
+released="08 aug 2023"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -10,6 +10,9 @@ released="19 jul 2023"
 #
 # V1.0.2 - 19/07/2023
 #   reviewed multiple send and add interval between sends to avoid flood error
+#
+# V1.0.3 - 08/08/2023
+#   added external try-catch for unexpected errors
 #
 
 import time
@@ -66,92 +69,102 @@ for mapping_str in category_channel_mappings_str.split(','):
 errors = 0
 while errors < RETRY_COUNT:
     try:
-        while True:
-            print("Parsing new feeds...")
-            # Parse the RSS feed
-            feed = feedparser.parse(FEED_URL)
+        try:
+            while True:
+                print("Parsing new feeds...")
+                # Parse the RSS feed
+                feed = feedparser.parse(FEED_URL)
 
-            # Loop over entries in reverse order to catch all new posts in their historical order
-            for entry in reversed(feed.entries):
-                # Parse ID from GUID URL
-                id = urlparse(entry.guid).path.split('/')[-1]
+                # Loop over entries in reverse order to catch all new posts in their historical order
+                for entry in reversed(feed.entries):
+                    # Parse ID from GUID URL
+                    id = urlparse(entry.guid).path.split('/')[-1]
 
-                # If we haven't processed this entry yet
-                if id not in processed_ids:
-                    # Form the magnet link with URL encoding
-                    magnet_link = f"magnet:?xt=urn:btih:{entry.nyaa_infohash}&dn={quote(entry.title)}&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce"
-                    view_link = f"<a href='{entry.guid}'>View</a>"
-                    download_link = f"<a href='{entry.link}'>Download</a>"
-                    published_datetime = entry.published.replace(" -0000", "")
-                    
-                    # Replace spaces and - in category with underscores and prepend with #
-                    category = "#" + entry.nyaa_category.replace(" ", "_").replace("-", "_")
+                    # If we haven't processed this entry yet
+                    if id not in processed_ids:
+                        # Form the magnet link with URL encoding
+                        magnet_link = f"magnet:?xt=urn:btih:{entry.nyaa_infohash}&dn={quote(entry.title)}&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce"
+                        view_link = f"<a href='{entry.guid}'>View</a>"
+                        download_link = f"<a href='{entry.link}'>Download</a>"
+                        published_datetime = entry.published.replace(" -0000", "")
+                        
+                        # Replace spaces and - in category with underscores and prepend with #
+                        category = "#" + entry.nyaa_category.replace(" ", "_").replace("-", "_")
 
-                    # Form the message in HTML
-                    message = f"<b>{entry.title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>\n\n<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
-                    if len(message) >= 1024:
-                        message_part1 = f"<b>{entry.title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>"
-                        message_part2 = f"<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
+                        # Form the message in HTML
+                        message = f"<b>{entry.title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>\n\n<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
+                        if len(message) >= 1024:
+                            message_part1 = f"<b>{entry.title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>"
+                            message_part2 = f"<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
 
-                    # Download the file
-                    response = requests.get(entry.link, stream=True)
-                    # Extract the filename from the Content-Disposition header and unquote
-                    suggested_filename = unquote(response.headers['Content-Disposition'].split('filename*=UTF-8\'\'')[-1])
-                    # Add [id] and [hash] in the filename before the .torrent extension
-                    file_name, file_ext = os.path.splitext(suggested_filename)
-                    file_path = os.path.join(DOWNLOAD_PATH, f"{file_name}{file_ext}")#[{id}][{entry.nyaa_infohash}]{file_ext}")
+                        # Download the file
+                        response = requests.get(entry.link, stream=True)
+                        # Extract the filename from the Content-Disposition header and unquote
+                        suggested_filename = unquote(response.headers['Content-Disposition'].split('filename*=UTF-8\'\'')[-1])
+                        # Add [id] and [hash] in the filename before the .torrent extension
+                        file_name, file_ext = os.path.splitext(suggested_filename)
+                        file_path = os.path.join(DOWNLOAD_PATH, f"{file_name}{file_ext}")#[{id}][{entry.nyaa_infohash}]{file_ext}")
 
-                    try:
-                        with open(file_path, 'wb') as f:
-                            f.write(response.content)
-                            send_file = True
-                    except Exception as e:
-                        send_file = False  
+                        try:
+                            with open(file_path, 'wb') as f:
+                                f.write(response.content)
+                                send_file = True
+                        except Exception as e:
+                            send_file = False  
 
-                    send_to = [TELEGRAM_CHANNEL_ID]
-                    
-                    # Send the message with the file to each corresponding channel
-                    for mapping in category_channel_mappings:
-                        if mapping.category == entry.nyaa_categoryid and mapping.enabled:
-                            send_to.append(mapping.channel)                  
+                        send_to = [TELEGRAM_CHANNEL_ID]
+                        
+                        # Send the message with the file to each corresponding channel
+                        for mapping in category_channel_mappings:
+                            if mapping.category == entry.nyaa_categoryid and mapping.enabled:
+                                send_to.append(mapping.channel)                  
 
-                    if send_file:
-                        # Send the message with the file to global channel
-                        with open(file_path, 'rb') as f:
+                        if send_file:
+                            # Send the message with the file to global channel
+                            with open(file_path, 'rb') as f:
+                                for destination in send_to:
+                                    f.seek(0)  # Reset the file pointer to the beginning of the file
+                                    if len(message) >= 1024:
+                                        bot.send_document(chat_id=destination, document=InputFile(f), caption=message_part1, parse_mode='HTML')
+                                        bot.send_message(chat_id=destination, text=message_part2, parse_mode='HTML')
+                                    else:
+                                        bot.send_document(chat_id=destination, document=InputFile(f), caption=message, parse_mode='HTML')
+                                    time.sleep(2) #slow processing to avoid flood error
+                        else:
                             for destination in send_to:
-                                f.seek(0)  # Reset the file pointer to the beginning of the file
                                 if len(message) >= 1024:
-                                    bot.send_document(chat_id=destination, document=InputFile(f), caption=message_part1, parse_mode='HTML')
-                                    bot.send_message(chat_id=destination, text=message_part2, parse_mode='HTML')
+                                    bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part1, parse_mode='HTML')
+                                    bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part2, parse_mode='HTML')
                                 else:
-                                    bot.send_document(chat_id=destination, document=InputFile(f), caption=message, parse_mode='HTML')
+                                    bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message, parse_mode='HTML')
                                 time.sleep(2) #slow processing to avoid flood error
-                    else:
-                        for destination in send_to:
-                            if len(message) >= 1024:
-                                bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part1, parse_mode='HTML')
-                                bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part2, parse_mode='HTML')
-                            else:
-                                bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message, parse_mode='HTML')
-                            time.sleep(2) #slow processing to avoid flood error
-    
+        
 
-                    # Mark the entry as processed
-                    processed_ids.add(id)
-                    with open(processed_file_path, 'a') as file:
-                        file.write(f"{id}\n")
+                        # Mark the entry as processed
+                        processed_ids.add(id)
+                        with open(processed_file_path, 'a') as file:
+                            file.write(f"{id}\n")
 
-            # Wait before checking again
-            print("Feed parsed. Waiting " + str(CHECK_INTERVAL) + " seconds for next parsing.")
-            time.sleep(CHECK_INTERVAL)
-            errors = 0
+                # Wait before checking again
+                print("Feed parsed. Waiting " + str(CHECK_INTERVAL) + " seconds for next parsing.")
+                time.sleep(CHECK_INTERVAL)
+                errors = 0
+        except Exception as e:
+            # Send the error message to the specified user
+            error_message = str(e) + "\n\n" + traceback.format_exc()
+            print("Error: " + error_message)
+            bot.send_message(chat_id=ERROR_REPORT_USER_ID, text=error_message)
+            print("Waiting 60 seconds to retry. Attempt: " + str(errors))
+            errors += 1
+            time.sleep(60)
     except Exception as e:
-        # Send the error message to the specified user
-        error_message = str(e) + "\n\n" + traceback.format_exc()
-        print("Error: " + error_message)
-        bot.send_message(chat_id=ERROR_REPORT_USER_ID, text=error_message)
-        print("Waiting 60 seconds to retry. Attempt: " + str(errors))
-        errors += 1
-        time.sleep(60)
+        # Unexpected error
+        try:
+            error_message = str(e) + "\n\n" + traceback.format_exc()
+            print("Error: " + error_message)
+        except Exception as ei:
+            print("Unknown internal error.")
+        time.sleep(120)
 
 bot.send_message(chat_id=ERROR_REPORT_USER_ID, text="Max retry attempts reached.\n\nBye Bye!")
+print("Max retry attempts reached.\n\nBye Bye!")
