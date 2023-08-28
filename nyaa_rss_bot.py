@@ -1,5 +1,5 @@
-version="1.0.3"
-released="08 aug 2023"
+version="1.0.4"
+released="28 aug 2023"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -14,6 +14,8 @@ released="08 aug 2023"
 # V1.0.3 - 08/08/2023
 #   added external try-catch for unexpected errors
 #
+# v1..0.4 - 28/08/2023
+#   added html tag char escape to avoid error on sending unexpected tags - https://core.telegram.org/bots/api#html-style
 
 import time
 import feedparser
@@ -79,11 +81,12 @@ while errors < RETRY_COUNT:
                 for entry in reversed(feed.entries):
                     # Parse ID from GUID URL
                     id = urlparse(entry.guid).path.split('/')[-1]
+                    title = entry.title.replace("&", "&amp;").replace("<","&lt;").replace(">", "&gt;") #avoid unsupported start tag error when send message with <...> titles
 
                     # If we haven't processed this entry yet
                     if id not in processed_ids:
                         # Form the magnet link with URL encoding
-                        magnet_link = f"magnet:?xt=urn:btih:{entry.nyaa_infohash}&dn={quote(entry.title)}&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce"
+                        magnet_link = f"magnet:?xt=urn:btih:{entry.nyaa_infohash}&dn={quote(title)}&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce"
                         view_link = f"<a href='{entry.guid}'>View</a>"
                         download_link = f"<a href='{entry.link}'>Download</a>"
                         published_datetime = entry.published.replace(" -0000", "")
@@ -92,9 +95,9 @@ while errors < RETRY_COUNT:
                         category = "#" + entry.nyaa_category.replace(" ", "_").replace("-", "_")
 
                         # Form the message in HTML
-                        message = f"<b>{entry.title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>\n\n<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
+                        message = f"<b>{title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>\n\n<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
                         if len(message) >= 1024:
-                            message_part1 = f"<b>{entry.title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>"
+                            message_part1 = f"<b>{title}</b>\n<b>{entry.nyaa_size}</b> - {category}\n\n{download_link} - {view_link}\n\nID: {id}\nHash: <code>{entry.nyaa_infohash}</code>"
                             message_part2 = f"<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
 
                         # Download the file
