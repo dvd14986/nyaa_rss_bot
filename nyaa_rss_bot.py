@@ -1,5 +1,5 @@
-version="1.0.4"
-released="28 aug 2023"
+version="1.1"
+released="09 nov 2023"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -16,6 +16,13 @@ released="28 aug 2023"
 #
 # v1..0.4 - 28/08/2023
 #   added html tag char escape to avoid error on sending unexpected tags - https://core.telegram.org/bots/api#html-style
+#
+# V1.1 - 09/11/2023
+#   added ids in the file name
+#   added filename lenght limitation
+#   check if file exist and rename it if true
+#   torrent name is saved now in the processed_ids files too
+#   spleep delay between message send set to 3 sec to avoid flood errors
 
 import time
 import feedparser
@@ -53,11 +60,11 @@ bot.send_message(chat_id=ERROR_REPORT_USER_ID, text=start_message)
 if not os.path.exists(DOWNLOAD_PATH):
     os.makedirs(DOWNLOAD_PATH)
 
-# Load processed IDs from file
+# Load processed IDs from file. Cut on "|" and get only the number
 processed_file_path = 'processed_ids.txt'
 if os.path.exists(processed_file_path):
     with open(processed_file_path, 'r') as file:
-        processed_ids = set(line.strip() for line in file)
+        processed_ids = set(line.split("|")[0].strip() for line in file)
 else:
     processed_ids = set()
 
@@ -67,6 +74,39 @@ category_channel_mappings = []
 for mapping_str in category_channel_mappings_str.split(','):
     category, channel, enabled = mapping_str.split('|')
     category_channel_mappings.append(CategoryChannel(category, channel, enabled == '1'))
+
+
+def generate_unique_filename(file_name, file_ext, id):
+    global DOWNLOAD_PATH
+    # Prepend the "id" variable to the filename
+    full_filename = f"{id}-{file_name}{file_ext}"
+
+    # Maximum allowed filename length taken from the OS
+    try:
+        max_filename_length = os.pathconf(DOWNLOAD_PATH, 'PC_NAME_MAX')
+    except:
+        max_filename_length = 255
+
+    # Build the full file path
+    file_path = os.path.join(DOWNLOAD_PATH, full_filename)
+
+    counter = 1
+
+    while os.path.exists(file_path):
+        # Define a new filename with a counter
+        new_file_name = f"{id}-{file_name}_{counter}{file_ext}"
+        
+        # Check if the total length is too long and shorten the file_name section
+        if len(new_file_name) > max_filename_length:
+            remaining_length = max_filename_length - len(file_ext) - len(id) - 3  # Account for "|", "_", and "."
+            file_name = file_name[:remaining_length]
+            new_file_name = f"{id}-{file_name}_{counter}{file_ext}"
+
+        file_path = os.path.join(DOWNLOAD_PATH, new_file_name)
+
+        counter += 1
+
+    return file_path
 
 errors = 0
 while errors < RETRY_COUNT:
@@ -106,7 +146,8 @@ while errors < RETRY_COUNT:
                         suggested_filename = unquote(response.headers['Content-Disposition'].split('filename*=UTF-8\'\'')[-1])
                         # Add [id] and [hash] in the filename before the .torrent extension
                         file_name, file_ext = os.path.splitext(suggested_filename)
-                        file_path = os.path.join(DOWNLOAD_PATH, f"{file_name}{file_ext}")#[{id}][{entry.nyaa_infohash}]{file_ext}")
+                        #file_path = os.path.join(DOWNLOAD_PATH, f"{file_name}{file_ext}")#[{id}][{entry.nyaa_infohash}]{file_ext}")
+                        file_path = generate_unique_filename(file_name, file_ext, id)
 
                         try:
                             with open(file_path, 'wb') as f:
@@ -132,7 +173,7 @@ while errors < RETRY_COUNT:
                                         bot.send_message(chat_id=destination, text=message_part2, parse_mode='HTML')
                                     else:
                                         bot.send_document(chat_id=destination, document=InputFile(f), caption=message, parse_mode='HTML')
-                                    time.sleep(2) #slow processing to avoid flood error
+                                    time.sleep(3) #slow processing to avoid flood error
                         else:
                             for destination in send_to:
                                 if len(message) >= 1024:
@@ -140,13 +181,13 @@ while errors < RETRY_COUNT:
                                     bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message_part2, parse_mode='HTML')
                                 else:
                                     bot.send_message(chat_id=TELEGRAM_CHANNEL_ID, text=message, parse_mode='HTML')
-                                time.sleep(2) #slow processing to avoid flood error
+                                time.sleep(3) #slow processing to avoid flood error
         
 
-                        # Mark the entry as processed
+                        # Mark the entry as processed - Attcach the torrent name to ids
                         processed_ids.add(id)
                         with open(processed_file_path, 'a') as file:
-                            file.write(f"{id}\n")
+                            file.write(f"{id}|{file_name}{file_ext}\n")
 
                 # Wait before checking again
                 print("Feed parsed. Waiting " + str(CHECK_INTERVAL) + " seconds for next parsing.")
