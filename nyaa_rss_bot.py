@@ -1,5 +1,5 @@
-version="1.1"
-released="09 nov 2023"
+version="1.2"
+released="27 nov 2023"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -23,6 +23,10 @@ released="09 nov 2023"
 #   check if file exist and rename it if true
 #   torrent name is saved now in the processed_ids files too
 #   spleep delay between message send set to 3 sec to avoid flood errors
+#
+# V1.2 - 27/11/2023
+#   added filename sanitization
+
 
 import time
 import feedparser
@@ -32,6 +36,7 @@ import traceback
 from telegram import Bot, InputFile
 from urllib.parse import urlparse, quote, unquote
 from dotenv import load_dotenv
+import re
 
 class CategoryChannel:
     def __init__(self, category, channel, enabled):
@@ -74,6 +79,23 @@ category_channel_mappings = []
 for mapping_str in category_channel_mappings_str.split(','):
     category, channel, enabled = mapping_str.split('|')
     category_channel_mappings.append(CategoryChannel(category, channel, enabled == '1'))
+
+
+def sanitize_filename(filename):
+    """
+    Sanitize a filename to be compatible with both Linux and Windows.
+    Removes characters that are not allowed in Windows filenames,
+    while preserving spaces and supporting international characters.
+    """
+
+    # Windows filename restrictions (characters not allowed: \/:*?"<>|)
+    # Using Unicode character properties to support international characters
+    sanitized = re.sub(r'[\\/:*?"<>|\r\n]+', '', filename, flags=re.UNICODE)
+
+    # Remove leading and trailing periods, which can cause issues in Windows
+    sanitized = sanitized.strip(".")
+
+    return sanitized
 
 
 def generate_unique_filename(file_name, file_ext, id):
@@ -146,8 +168,9 @@ while errors < RETRY_COUNT:
                         suggested_filename = unquote(response.headers['Content-Disposition'].split('filename*=UTF-8\'\'')[-1])
                         # Add [id] and [hash] in the filename before the .torrent extension
                         file_name, file_ext = os.path.splitext(suggested_filename)
+                        sanitized_file_name = sanitize_filename(file_name)
                         #file_path = os.path.join(DOWNLOAD_PATH, f"{file_name}{file_ext}")#[{id}][{entry.nyaa_infohash}]{file_ext}")
-                        file_path = generate_unique_filename(file_name, file_ext, id)
+                        file_path = generate_unique_filename(sanitized_file_name, file_ext, id)
 
                         try:
                             with open(file_path, 'wb') as f:
