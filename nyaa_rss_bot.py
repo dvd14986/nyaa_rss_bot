@@ -1,5 +1,5 @@
-version="1.2"
-released="27 nov 2023"
+version="1.3"
+released="01 feb 2024"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -26,6 +26,9 @@ released="27 nov 2023"
 #
 # V1.2 - 27/11/2023
 #   added filename sanitization
+#
+# V1.3 - 01/02/2024
+#   added subfolder for saved torrent in the 1773xxx format. 1000 files per subfolder
 
 
 import time
@@ -53,6 +56,7 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHANNEL_ID = os.getenv('TELEGRAM_CHANNEL_ID')
 DOWNLOAD_PATH = os.getenv('DOWNLOAD_PATH')
 ERROR_REPORT_USER_ID = os.getenv('ERROR_REPORT_USER_ID')
+TORRENT_FILE_REQUEST_TIMEOUT = int(os.getenv('TORRENT_FILE_REQUEST_TIMEOUT'))
 
 # Initialize bot
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -100,17 +104,24 @@ def sanitize_filename(filename):
 
 def generate_unique_filename(file_name, file_ext, id):
     global DOWNLOAD_PATH
+    # Calculate the folder name based on the id
+    folder_name = f"{int(id) // 1000}xxx"  # Integer division to get the base and append 'xxx'
+    folder_path = os.path.join(DOWNLOAD_PATH, folder_name)
+
+    # Ensure the folder exists
+    os.makedirs(folder_path, exist_ok=True)
+
     # Prepend the "id" variable to the filename
     full_filename = f"{id}-{file_name}{file_ext}"
 
     # Maximum allowed filename length taken from the OS
     try:
-        max_filename_length = os.pathconf(DOWNLOAD_PATH, 'PC_NAME_MAX')
+        max_filename_length = os.pathconf(folder_path, 'PC_NAME_MAX')
     except:
         max_filename_length = 255
 
     # Build the full file path
-    file_path = os.path.join(DOWNLOAD_PATH, full_filename)
+    file_path = os.path.join(folder_path, full_filename)
 
     counter = 1
 
@@ -120,11 +131,11 @@ def generate_unique_filename(file_name, file_ext, id):
         
         # Check if the total length is too long and shorten the file_name section
         if len(new_file_name) > max_filename_length:
-            remaining_length = max_filename_length - len(file_ext) - len(id) - 3  # Account for "|", "_", and "."
+            remaining_length = max_filename_length - len(file_ext) - len(str(id)) - 3  # Account for "|", "_", and "."
             file_name = file_name[:remaining_length]
             new_file_name = f"{id}-{file_name}_{counter}{file_ext}"
 
-        file_path = os.path.join(DOWNLOAD_PATH, new_file_name)
+        file_path = os.path.join(folder_path, new_file_name)
 
         counter += 1
 
@@ -163,7 +174,7 @@ while errors < RETRY_COUNT:
                             message_part2 = f"<code>{magnet_link}</code>\n\nPublished: {published_datetime}"
 
                         # Download the file
-                        response = requests.get(entry.link, stream=True)
+                        response = requests.get(entry.link, stream=True, timeout=TORRENT_FILE_REQUEST_TIMEOUT)
                         # Extract the filename from the Content-Disposition header and unquote
                         suggested_filename = unquote(response.headers['Content-Disposition'].split('filename*=UTF-8\'\'')[-1])
                         # Add [id] and [hash] in the filename before the .torrent extension
