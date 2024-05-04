@@ -3,3 +3,4 @@ pics/
 .env
 processed_ids.txt
 .env_prod
+not_sync/
