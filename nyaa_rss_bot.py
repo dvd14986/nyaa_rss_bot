@@ -1,5 +1,5 @@
 version="1.4"
-released="2024 may 04"
+released="2024 may 09"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -30,7 +30,7 @@ released="2024 may 04"
 # V1.3 - 01/02/2024
 #   added subfolder for saved torrent in the 1773xxx format. 1000 files per subfolder
 #
-# V1.4 - 2024/05/04 (switch to new date format)
+# V1.4 - 2024/05/09 (switch to new date format)
 #   refactored the feed parsing to use requests and ElementTree instead of feedparser
 #   refactored the structure of the script to use threading and scheduling
 #   added a global list to store RSS entries
@@ -281,13 +281,12 @@ def process_entry(entry):
     try:
         try:
             # Parse ID from GUID URL
-            log("Processing entry...")
             id = urlparse(entry['guid']).path.split('/')[-1]
             title = entry['title'].replace("&", "&amp;").replace("<","&lt;").replace(">", "&gt;") #avoid unsupported start tag error when send message with <...> titles
-            log(f"{id} | {title}")
 
             # If we haven't processed this entry yet
             if id not in processed_ids:
+                log(f"Processing entry: {id} | {title}")
                 # Form the magnet link with URL encoding
                 magnet_link = f"magnet:?xt=urn:btih:{entry['nyaa_infohash']}&dn={quote(title)}&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce"
                 view_link = f"<a href='{entry['guid']}'>View</a>"
@@ -373,10 +372,10 @@ def process_entry(entry):
 
                 log(f"Processed.")
             else:
-                log(f"Entry already processed.")
+                log(f"Entry already processed: {id} | {title}")
         except Exception as e:
             error_message = str(e) + "\n\n" + traceback.format_exc()
-            log("Error processing entry: " + error_message)
+            log(f"Error processing entry: {id} | {title} \nError:" + error_message)
             safe_send_message(chat_id=ERROR_REPORT_USER_ID, text="Error processing entry: " + error_message)
             log("Waiting 60 seconds to retry.")
             time.sleep(60)
