@@ -1,5 +1,5 @@
 version="1.4"
-released="2024 may 09"
+released="2024 may 10"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -30,7 +30,7 @@ released="2024 may 09"
 # V1.3 - 01/02/2024
 #   added subfolder for saved torrent in the 1773xxx format. 1000 files per subfolder
 #
-# V1.4 - 2024/05/09 (switch to new date format)
+# V1.4 - 2024/05/10 (switch to new date format)
 #   refactored the feed parsing to use requests and ElementTree instead of feedparser
 #   refactored the structure of the script to use threading and scheduling
 #   added a global list to store RSS entries
@@ -268,6 +268,22 @@ def fetch_rss_feed():
         except Exception as ei:
             log("Unknown internal error while fetching RSS.")
 
+def safe_fetch_rss_feed():
+    try:
+        fetch_rss_feed()
+    except Exception as e:
+        try:
+            error_message = str(e) + "\n\n" + traceback.format_exc()
+            log("Error on handling scheduled job: " + error_message)
+            safe_send_message(chat_id=ERROR_REPORT_USER_ID, text="Error on handling scheduled job: " + error_message)
+        except Exception as e:
+            # Unexpected error
+            try:
+                error_message = str(e) + "\n\n" + traceback.format_exc()
+                log("Error: " + error_message)
+            except Exception as ei:
+                log("Unknown error while running scheduled job.")
+
 def process_entries():
     global rss_entries
     while True:
@@ -402,12 +418,26 @@ log("Started.")
 
 # First Run and then Schedule the fetching task
 log("First run of fetch_rss_feed...")
-fetch_rss_feed()
+safe_fetch_rss_feed()
 log("First run done. Scheduling task.")
-schedule.every(CHECK_INTERVAL).seconds.do(fetch_rss_feed)
+schedule.every(CHECK_INTERVAL).seconds.do(safe_fetch_rss_feed)
 log("Scheduled.")
 
 # Start scheduled tasks
 while True:
-    schedule.run_pending()
+    try:
+        schedule.run_pending()
+    except Exception as e:
+        try:
+            error_message = str(e) + "\n\n" + traceback.format_exc()
+            log("Very unexpected error on handling scheduled job: " + error_message)
+            safe_send_message(chat_id=ERROR_REPORT_USER_ID, text="Very unexpected error on handling scheduled job: " + error_message)
+        except Exception as e:
+            # Unexpected error
+            try:
+                error_message = str(e) + "\n\n" + traceback.format_exc()
+                log("Error: " + error_message)
+            except Exception as ei:
+                log("Very unexpected error while running scheduled job.")
     time.sleep(1)
+
