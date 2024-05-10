@@ -42,6 +42,9 @@ released="2024 may 10"
 #   add function to log messages with timestamps (no file logging yet)
 #   add a lot of log messages to track the script execution
 #   add DELAY_BETWEEN_SENDS environment variable to set the delay between sending messages
+#   disabled log of processed entries to avoid flooding the log
+#   added a log to notify that no more entries are available to process
+#   added a function to send an alert if no new items are processed for a certain amount of time
 
 
 import time
@@ -284,16 +287,50 @@ def safe_fetch_rss_feed():
             except Exception as ei:
                 log("Unknown error while running scheduled job.")
 
+last_new_item_timestamp = time.time()
+last_alert_sent = 0
+def send_alert_if_needed():
+    global last_new_item_timestamp, last_alert_sent
+    time_thresholds = [
+        (600, "10 minutes"),
+        (1200, "20 minutes"),
+        (1800, "30 minutes"),
+        (3600, "1 hour"),
+        (7200, "2 hours"),
+        (14400, "4 hours"),
+        (21600, "6 hours")
+    ]
+    current_time = time.time()
+    message_sent = False
+
+    for threshold, message in time_thresholds:
+        if current_time - last_new_item_timestamp > threshold and last_alert_sent < threshold:
+            last_alert_sent = threshold
+            message_text = f"No new items in the last {message}."
+            safe_send_message(chat_id=ERROR_REPORT_USER_ID, text=message_text)
+            log(message_text)
+            message_sent = True
+            break  # Only send one message per check
+
+    return message_sent
+
 def process_entries():
     global rss_entries
+    to_process = False
     while True:
         if rss_entries:
+            to_process = True
             entry = rss_entries.pop(0)
-            process_entry(entry)
+            process_entry(entry)  # Assuming this function is defined elsewhere
         else:
+            if to_process:
+                log("No more entries to process. Waiting for new entries...")
+                to_process = False
+            send_alert_if_needed()
             time.sleep(1)  # Sleep for a short time if there are no entries to process
 
 def process_entry(entry):
+    global last_new_item_timestamp
     try:
         try:
             # Parse ID from GUID URL
@@ -386,9 +423,10 @@ def process_entry(entry):
                     file.write(f"{id}|{file_name}{file_ext}\n")
                 log("Saved.")
 
+                last_new_item_timestamp = time.time()
                 log(f"Processed.")
-            else:
-                log(f"Entry already processed: {id} | {title}")
+            # else:
+            #     log(f"Entry already processed: {id} | {title}")
         except Exception as e:
             error_message = str(e) + "\n\n" + traceback.format_exc()
             log(f"Error processing entry: {id} | {title} \nError:" + error_message)
