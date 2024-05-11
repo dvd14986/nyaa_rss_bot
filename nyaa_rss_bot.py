@@ -45,6 +45,8 @@ released="2024 may 11"
 #   disabled log of processed entries to avoid flooding the log
 #   added a log to notify that no more entries are available to process
 #   added a function to send an alert if no new items are processed for a certain amount of time
+#   added a function to reacquire the feed on alert to verify if new items are being added and not noticed by the script
+#   send alert if no new items are processed for a certain amount of time and new items are detected in the feed
 
 
 import time
@@ -220,6 +222,53 @@ def generate_unique_filename(file_name, file_ext, id):
 # Global list to store RSS entries
 rss_entries = []
 
+def fetch_latest_rss_entry():
+    last_id = 0
+    try:
+        try:
+            log("Fetching latest feed item...")
+            response = requests.get(FEED_URL, timeout=FEED_REQUEST_TIMEOUT)
+            log("Feed fetched.")
+            try:
+                log("Validating XML...")
+                root = ET.fromstring(response.content)
+                log("Validated.")
+                log("Parsing items...")
+                item = root.find('.//item')
+                entry = {
+                    'title': item.find('title').text,
+                    'link': item.find('link').text,
+                    'guid': item.find('guid').text,
+                    'published': item.find('pubDate').text,
+                    'nyaa_infohash': item.find('{https://nyaa.si/xmlns/nyaa}infoHash').text,
+                    'nyaa_categoryid': item.find('{https://nyaa.si/xmlns/nyaa}categoryId').text,
+                    'nyaa_category': item.find('{https://nyaa.si/xmlns/nyaa}category').text,
+                    'nyaa_size': item.find('{https://nyaa.si/xmlns/nyaa}size').text
+                }
+                log("Parsed.")
+                last_id = urlparse(entry['guid']).path.split('/')[-1]
+            except ET.ParseError as pe:
+                error_message = "XML Parse Error for latest entry: Incomplete or malformed XML."
+                log(error_message)
+                safe_send_message(chat_id=ERROR_REPORT_USER_ID, text=error_message)
+        except requests.RequestException as re:
+            error_message = str(re) + "\n\n" + traceback.format_exc()
+            log("Error fetching RSS: " + error_message)
+            safe_send_message(chat_id=ERROR_REPORT_USER_ID, text="Error fetching RSS for latest entry: " + error_message)
+        except Exception as e:
+            # Unknown error
+            error_message = str(e) + "\n\n" + traceback.format_exc()
+            log("Unknown Error fetching RSS for latest entry: " + error_message)
+            safe_send_message(chat_id=ERROR_REPORT_USER_ID, text="Error fetching RSS for latest entry: " + error_message)
+    except Exception as e:
+        # Unexpected error
+        try:
+            error_message = str(e) + "\n\n" + traceback.format_exc()
+            log("Error: " + error_message)
+        except Exception as ei:
+            log("Unknown internal error while fetching RSS.")
+    return last_id
+
 def fetch_rss_feed():
     global rss_entries
     local_entries = []
@@ -289,6 +338,7 @@ def safe_fetch_rss_feed():
 
 last_new_item_timestamp = time.time()
 last_alert_sent = 0
+last_processed_id = 0
 
 def reset_alerts():
     global last_new_item_timestamp, last_alert_sent
@@ -296,8 +346,11 @@ def reset_alerts():
     last_alert_sent = 0
 
 def send_alert_if_needed():
-    global last_new_item_timestamp, last_alert_sent
+    global last_new_item_timestamp, last_alert_sent, processed_ids
     time_thresholds = [
+        # (20, "20 seconds"),
+        # (40, "40 seconds"),
+        # (60, "1 minute"),
         (600, "10 minutes"),
         (1200, "20 minutes"),
         (1800, "30 minutes"),
@@ -311,12 +364,22 @@ def send_alert_if_needed():
 
     for threshold, message in time_thresholds:
         if current_time - last_new_item_timestamp > threshold and last_alert_sent < threshold:
-            last_alert_sent = threshold
-            message_text = f"No new items in the last {message}."
-            safe_send_message(chat_id=ERROR_REPORT_USER_ID, text=message_text)
-            log(message_text)
-            message_sent = True
-            break  # Only send one message per check
+            # verify if new items are being added to the xml
+            last_xml_id =  fetch_latest_rss_entry()
+            if last_xml_id not in processed_ids:
+                # something is wrong
+                last_alert_sent = threshold
+                message_text = f"Something wrong.\nNo new items in the last {message}. But the XML feed has new items.\nLast items in the processed_ids: {last_processed_id}\nLast item in the XML: {last_xml_id}"
+                safe_send_message(chat_id=ERROR_REPORT_USER_ID, text=message_text)
+                log(message_text)
+                message_sent = True
+                break  # Only send one message per check
+            else:
+                # normal behavior
+                last_alert_sent = threshold
+                log("No new items in the last " + message + " but no new items detected from the XML feed when checking.")
+                message_sent = False
+                break
 
     return message_sent
 
@@ -336,6 +399,7 @@ def process_entries():
             time.sleep(1)  # Sleep for a short time if there are no entries to process
 
 def process_entry(entry):
+    global last_processed_id, processed_ids
     try:
         try:
             # Parse ID from GUID URL
@@ -423,6 +487,7 @@ def process_entry(entry):
 
                 # Mark the entry as processed - Attach the torrent name to ids
                 processed_ids.add(id)
+                last_processed_id = id
                 log("Saving entry to processed_ids file.")
                 with open(processed_file_path, 'a', encoding="utf-8") as file:
                     file.write(f"{id}|{file_name}{file_ext}\n")
