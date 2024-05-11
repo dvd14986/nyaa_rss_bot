@@ -1,5 +1,5 @@
 version="1.4"
-released="2024 may 10"
+released="2024 may 11"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -30,7 +30,7 @@ released="2024 may 10"
 # V1.3 - 01/02/2024
 #   added subfolder for saved torrent in the 1773xxx format. 1000 files per subfolder
 #
-# V1.4 - 2024/05/10 (switch to new date format)
+# V1.4 - 2024/05/11 (switch to new date format)
 #   refactored the feed parsing to use requests and ElementTree instead of feedparser
 #   refactored the structure of the script to use threading and scheduling
 #   added a global list to store RSS entries
@@ -289,6 +289,12 @@ def safe_fetch_rss_feed():
 
 last_new_item_timestamp = time.time()
 last_alert_sent = 0
+
+def reset_alerts():
+    global last_new_item_timestamp, last_alert_sent
+    last_new_item_timestamp = time.time()
+    last_alert_sent = 0
+
 def send_alert_if_needed():
     global last_new_item_timestamp, last_alert_sent
     time_thresholds = [
@@ -330,7 +336,6 @@ def process_entries():
             time.sleep(1)  # Sleep for a short time if there are no entries to process
 
 def process_entry(entry):
-    global last_new_item_timestamp
     try:
         try:
             # Parse ID from GUID URL
@@ -423,7 +428,7 @@ def process_entry(entry):
                     file.write(f"{id}|{file_name}{file_ext}\n")
                 log("Saved.")
 
-                last_new_item_timestamp = time.time()
+                reset_alerts()
                 log(f"Processed.")
             # else:
             #     log(f"Entry already processed: {id} | {title}")
