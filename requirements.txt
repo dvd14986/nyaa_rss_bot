@@ -1,4 +1,6 @@
 python-telegram-bot
-feedparser
 requests
 python-dotenv
+requests
+feedparser
+schedule
