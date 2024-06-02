@@ -1,5 +1,5 @@
-version="1.4"
-released="2024 may 11"
+version="1.4.1"
+released="2024 jun 02"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -47,6 +47,9 @@ released="2024 may 11"
 #   added a function to send an alert if no new items are processed for a certain amount of time
 #   added a function to reacquire the feed on alert to verify if new items are being added and not noticed by the script
 #   send alert if no new items are processed for a certain amount of time and new items are detected in the feed
+#
+# V1.4.1 - 2024/06/02
+#   added safe threshold to avoid false positives on alert for new items
 
 
 import time
@@ -366,7 +369,7 @@ def send_alert_if_needed():
         if current_time - last_new_item_timestamp > threshold and last_alert_sent < threshold:
             # verify if new items are being added to the xml
             last_xml_id =  fetch_latest_rss_entry()
-            if last_xml_id not in processed_ids:
+            if last_xml_id not in processed_ids and (int(last_xml_id) > (int(last_processed_id) + 10)): # 10 is a safe margin to avoid false positives
                 # something is wrong
                 last_alert_sent = threshold
                 message_text = f"Something wrong.\nNo new items in the last {message}. But the XML feed has new items.\nLast items in the processed_ids: {last_processed_id}\nLast item in the XML: {last_xml_id}"
