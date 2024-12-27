@@ -4,3 +4,4 @@ pics/
 processed_ids.txt
 .env_prod
 not_sync/
+venv/
