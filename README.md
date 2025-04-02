@@ -1,5 +1,3 @@
-Collecting workspace information# Nyaa RSS Bot
-
 A Python bot that monitors [Nyaa.si](https://nyaa.si) RSS feeds, automatically downloads new torrents, and forwards them to Telegram channels.
 
 ## Features
