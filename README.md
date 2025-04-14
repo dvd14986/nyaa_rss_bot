@@ -89,6 +89,8 @@ CATEGORY_CHANNEL_MAPPINGS=1_1|channel_id1|1,1_2|channel_id2|1,1_3|channel_id3|1,
 FEED_REQUEST_TIMEOUT=30
 TORRENT_FILE_REQUEST_TIMEOUT=30
 DELAY_BETWEEN_SENDS=3
+BIG_SIZE_THRESHOLD_GiB=4.5
+BIG_SIZE_CHANNEL_ID=channel_id5
 ```
 
 Configuration explanation:
@@ -106,6 +108,8 @@ Configuration explanation:
 - `FEED_REQUEST_TIMEOUT`: Timeout for RSS feed requests (in seconds)
 - `TORRENT_FILE_REQUEST_TIMEOUT`: Timeout for torrent file downloads (in seconds)
 - `DELAY_BETWEEN_SENDS`: Delay between Telegram message sends (in seconds)
+- `BIG_SIZE_THRESHOLD_GiB`: Size in GiB to trigger the send of the torrent to `BIG_SIZE_CHANNEL_ID`
+- `BIG_SIZE_CHANNEL_ID`= ID of the big torrent channel
 
 ## Usage
 

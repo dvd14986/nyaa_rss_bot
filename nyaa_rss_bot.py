@@ -1,5 +1,5 @@
-version="1.4.1"
-released="2024 jun 02"
+version="1.5"
+released="2025 apr 14"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -50,6 +50,9 @@ released="2024 jun 02"
 #
 # V1.4.1 - 2024/06/02
 #   added safe threshold to avoid false positives on alert for new items
+#
+# V1.5 - 2025/04/14
+#   added support for redirect big size torrents to a different channel
 
 
 import time
@@ -83,6 +86,8 @@ ERROR_REPORT_USER_ID = os.getenv('ERROR_REPORT_USER_ID')
 FEED_REQUEST_TIMEOUT = int(os.getenv('FEED_REQUEST_TIMEOUT') or 30)
 TORRENT_FILE_REQUEST_TIMEOUT = int(os.getenv('TORRENT_FILE_REQUEST_TIMEOUT') or 30)
 DELAY_BETWEEN_SENDS = int(os.getenv('DELAY_BETWEEN_SENDS') or 3)
+BIG_SIZE_THRESHOLD_GiB= float(os.getenv('BIG_SIZE_THRESHOLD_GiB').replace(",", ".") or 4.0)  # Default to 4 GiB if not set
+BIG_SIZE_CHANNEL_ID= os.getenv('BIG_SIZE_CHANNEL_ID')  # Channel ID for big size torrents
 
 # Initialize bot
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -453,7 +458,33 @@ def process_entry(entry):
                 # Send the message with the file to each corresponding channel
                 for mapping in category_channel_mappings:
                     if mapping.category == entry['nyaa_categoryid'] and mapping.enabled:
-                        send_to.append(mapping.channel)                  
+                        send_to.append(mapping.channel)      
+
+                # Check if the file is too big and send to the big size channel if needed
+                # Example values
+                # <nyaa:size>716 Bytes</nyaa:size>
+                # <nyaa:size>10.8 KiB</nyaa:size>
+                # <nyaa:size>942.7 MiB</nyaa:size>
+                # <nyaa:size>1.4 GiB</nyaa:size>
+                # <nyaa:size>2.8 TiB</nyaa:size>
+                size_value, size_unit = entry['nyaa_size'].split()
+                size_value = float(size_value.replace(",", "."))
+                # only process the size if the unit is in GiB or TiB
+                if size_unit in ["GiB", "TiB"]:
+                    if size_unit == "GiB":
+                        size_value = size_value * (1024 ** 3)
+                    elif size_unit == "TiB":    
+                        size_value = size_value * (1024 ** 4)
+                else:
+                    size_value = 0
+                # Check if the size is greater than the threshold
+                if size_value >= (BIG_SIZE_THRESHOLD_GiB * (1024 ** 3)):
+                    # Add the big size channel to the send_to list
+                    send_to.append(BIG_SIZE_CHANNEL_ID)
+                    log(f"File is too big. Sending to {BIG_SIZE_CHANNEL_ID}...")
+                else:
+                    log("File is not too big. Not sending to big size channel.")
+                
 
                 log("Sending message...")
                 if send_file:

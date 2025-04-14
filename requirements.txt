@@ -4,3 +4,4 @@ python-dotenv
 requests
 feedparser
 schedule
+urllib3==1.26.15
