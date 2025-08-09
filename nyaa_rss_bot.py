@@ -1,5 +1,5 @@
-version="1.5"
-released="2025 apr 14"
+version="1.5.1"
+released="2025 aug 09"
 
 #changelog
 # V1.0 - 13/07/2023
@@ -53,6 +53,9 @@ released="2025 apr 14"
 #
 # V1.5 - 2025/04/14
 #   added support for redirect big size torrents to a different channel
+#
+# V1.5.1 - 2025/08/09
+#   added a fix to handle the case when the Content-Disposition header is missing or malformed
 
 
 import time
@@ -435,13 +438,60 @@ def process_entry(entry):
                 log("Downloading torrent file...")
                 # Download the file
                 response = requests.get(entry['link'], stream=True, timeout=TORRENT_FILE_REQUEST_TIMEOUT)
-                log("Downloaded. Saving...")
-                # Extract the filename from the Content-Disposition header and unquote
-                suggested_filename = unquote(response.headers['Content-Disposition'].split('filename*=UTF-8\'\'')[-1])
+                status_code = response.status_code
+                content_type = response.headers.get('Content-Type', '')
+                log(f"Downloaded. HTTP {status_code}. Content-Type: {content_type}")
+
+                # Prepare common diagnostic info
+                headers_dump = "\n".join([f"{k}: {v}" for k, v in response.headers.items()])
+                body_preview = ""  # only for unexpected content types
+                if 'bittorrent' not in content_type.lower():
+                    # Safe small preview from the start of content (max 200 bytes) for troubleshooting (likely HTML/text)
+                    try:
+                        raw = response.content[:200]
+                        try:
+                            body_preview = raw.decode('utf-8', errors='replace')
+                        except Exception:
+                            body_preview = str(raw)
+                    except Exception:
+                        body_preview = "<unavailable>"
+
+                cd_header = response.headers.get('Content-Disposition')
+                if not cd_header:
+                    warn_msg = (
+                        "Missing Content-Disposition header while downloading torrent. Skipping item.\n"
+                        f"ID: {id}\nTitle: {title}\nURL: {entry['link']}\nFinal URL: {response.url}\n"
+                        f"Status: {status_code}\nContent-Type: {content_type}\nHeaders:\n{headers_dump}"
+                    )
+                    if body_preview:
+                        warn_msg += f"\nBody preview:\n{body_preview}"
+                    log(warn_msg)
+                    # safe_send_message(chat_id=ERROR_REPORT_USER_ID, text=warn_msg[:4000])  # truncate if huge
+                    return  # Skip entry (not marked processed so it can retry later)
+
+                # Parse filename from header
+                try:
+                    suggested_filename = None
+                    if 'filename*=' in cd_header:
+                        # RFC 5987 style
+                        suggested_filename = unquote(cd_header.split("filename*=UTF-8''", 1)[1])
+                    elif 'filename=' in cd_header:
+                        # Basic form
+                        suggested_filename = unquote(cd_header.split('filename=', 1)[1].strip().strip('"').strip("'"))
+                    if not suggested_filename:
+                        raise ValueError('Filename parameter not found')
+                except Exception as e:
+                    warn_msg = (
+                        f"Failed to parse filename from Content-Disposition. Skipping item.\nID: {id}\nTitle: {title}\nError: {e}\nHeader: {cd_header}\n"
+                        f"Status: {status_code}\nContent-Type: {content_type}"
+                    )
+                    log(warn_msg)
+                    # safe_send_message(chat_id=ERROR_REPORT_USER_ID, text=warn_msg[:4000])
+                    return
+
                 # Add [id] and [hash] in the filename before the .torrent extension
                 file_name, file_ext = os.path.splitext(suggested_filename)
                 sanitized_file_name = sanitize_filename(file_name)
-                #file_path = os.path.join(DOWNLOAD_PATH, f"{file_name}{file_ext}")#[{id}][{entry['nyaa_infohash']}]{file_ext}")
                 file_path = generate_unique_filename(sanitized_file_name, file_ext, id)
 
                 try:
